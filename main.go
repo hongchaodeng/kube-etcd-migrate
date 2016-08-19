@@ -34,10 +34,14 @@ var (
 	migrateDatadir     string
 	migrateWALdir      string
 	migrateTransformer string
+	timeout            int64
 )
+
+var leaseID lease.LeaseID
 
 func init() {
 	flag.StringVar(&migrateDatadir, "data-dir", "", "Path to the data directory")
+	flag.Int64Var(&timeout, "timeout", 60*60, "timeout in seconds for all ttl keys")
 	flag.StringVar(&migrateWALdir, "wal-dir", "", "Path to the WAL directory")
 	flag.StringVar(&migrateTransformer, "transformer", "", "Path to the user-provided transformer program")
 	flag.Parse()
@@ -82,10 +86,6 @@ func main() {
 
 	fmt.Println("finished transforming keys")
 }
-
-var leaseID lease.LeaseID
-
-const timeout = 60 * 60
 
 func prepareBackend() backend.Backend {
 	dbpath := path.Join(migrateDatadir, "member", "snap", "db")
@@ -336,13 +336,17 @@ func transform(n *client.Node) *mvccpb.KeyValue {
 	if n.Dir {
 		return nil
 	}
+	lease := int64(0)
+	if n.TTL != 0 {
+		lease = int64(leaseID)
+	}
 	kv := &mvccpb.KeyValue{
 		Key:            []byte(n.Key),
 		Value:          []byte(n.Value),
 		CreateRevision: int64(n.CreatedIndex),
 		ModRevision:    int64(n.ModifiedIndex),
 		Version:        unKnownVersion,
-		Lease:          int64(leaseID),
+		Lease:          lease,
 	}
 	return kv
 }
